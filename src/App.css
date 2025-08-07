@@ -1,0 +1,23 @@
+.chat-container {
+  max-width: 600px;
+  margin: auto;
+  padding: 20px;
+}
+.chat-box {
+  height: 400px;
+  overflow-y: scroll;
+  border: 1px solid #ccc;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.input-area {
+  display: flex;
+  gap: 10px;
+}
+input {
+  flex: 1;
+  padding: 8px;
+}
+button {
+  padding: 8px 12px;
+}
