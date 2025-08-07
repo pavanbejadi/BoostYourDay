@@ -3,6 +3,10 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 require("dotenv").config();
+const mongoose = require("mongoose");
+const connectDB = require("./database");
+
+connectDB();
 
 const app = express();
 app.use(cors());
@@ -41,8 +45,6 @@ app.post("/api/chat", async (req, res) => {
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
-          Referer: "http://localhost:3000",
-          "X-Title": "my-chatbot-app",
         },
       }
     );
