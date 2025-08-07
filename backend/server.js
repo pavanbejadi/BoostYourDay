@@ -1,56 +1,62 @@
+// server.js
 const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv");
-const sqlite3 = require("sqlite3").verbose();
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-
-dotenv.config();
-console.log("🔐 Gemini API KEY:", process.env.GEMINI_API_KEY);
+const axios = require("axios");
+require("dotenv").config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// SQLite setup
-const db = new sqlite3.Database("chat.db");
-db.run(
-  "CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, prompt TEXT, reply TEXT)"
-);
+function cleanAIResponse(text) {
+  if (!text) return "";
 
-// Gemini setup
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  // Optional: Remove <think>...</think> if used by some models
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
 
-// Chat endpoint with Gemini
-app.post("/chat", async (req, res) => {
-  const { message } = req.body;
+  // Collapse extra newlines
+  text = text.replace(/\n{3,}/g, "\n\n");
+
+  return text.trim();
+}
+
+app.post("/api/chat", async (req, res) => {
+  const { content, persona, history = [] } = req.body;
+
+  const messages = [
+    { role: "system", content: persona || "You are a helpful assistant." },
+    ...history,
+    { role: "user", content },
+  ];
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const response = await axios.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        model: "openai/gpt-oss-20b",
+        messages,
+        stream: false,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          Referer: "http://localhost:3000",
+          "X-Title": "my-chatbot-app",
+        },
+      }
+    );
 
-    // Log incoming message
-    console.log("💬 User message:", message);
+    const aiMessage = response.data.choices?.[0]?.message;
+    if (aiMessage?.content) {
+      aiMessage.content = cleanAIResponse(aiMessage.content);
+    }
 
-    const result = await model.generateContent(message);
-    const reply = result.response.text();
-
-    console.log("🤖 Gemini reply:", reply);
-
-    // Save to DB
-    db.run("INSERT INTO messages (prompt, reply) VALUES (?, ?)", [
-      message,
-      reply,
-    ]);
-
-    res.json({ reply });
+    res.json(response.data);
   } catch (err) {
-    console.error("🔥 Gemini API Error:");
-    console.error(err);
-
-    res.status(500).json({ error: "Error talking to Gemini model" });
+    console.error("OpenRouter API error:", err.response?.data || err.message);
+    res.status(500).send("API error");
   }
 });
 
-// Start server
-app.listen(5000, () =>
-  console.log("✅ Gemini backend running on http://localhost:5000")
-);
+app.listen(5000, () => console.log("🚀 Server running on port 5000"));

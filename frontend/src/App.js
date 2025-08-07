@@ -1,43 +1,88 @@
-import { useState } from "react";
-import axios from "axios";
+// App.jsx
+import React, { useState, useEffect } from "react";
+import Sidebar from "./components/Sidebar";
+import ChatWindow from "./components/ChatWindow";
+import MessageInput from "./components/MessageInput";
 import "./App.css";
 
 function App() {
-  const [input, setInput] = useState("");
-  const [chat, setChat] = useState([]);
-  const [history, setHistory] = useState([]); // for memory
+  const [chats, setChats] = useState([[]]);
+  const [activeChat, setActiveChat] = useState(0);
+  const [darkMode, setDarkMode] = useState(
+    () => localStorage.getItem("theme") !== "light"
+  );
+  const [persona, setPersona] = useState("You are a helpful assistant.");
 
-  const sendMessage = async () => {
-    if (!input) return;
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode);
+    localStorage.setItem("theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
 
-    const newUserMsg = { role: "user", parts: [{ text: input }] };
-    const newChat = [...chat, { sender: "You", text: input }];
+  const handleSend = async (content) => {
+    const history = [...chats[activeChat], { content, role: "user" }];
 
-    const res = await axios.post("http://localhost:5000/chat", {
-      message: input,
-      history,
-    });
+    setChats((oldChats) =>
+      oldChats.map((chatArr, idx) =>
+        idx === activeChat ? [...chatArr, { content, role: "user" }] : chatArr
+      )
+    );
 
-    const newBotMsg = { role: "model", parts: [{ text: res.data.reply }] };
-    setHistory([...history, newUserMsg, newBotMsg]);
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, persona, history }),
+      });
 
-    setChat([...newChat, { sender: "Gemini", text: res.data.reply }]);
-    setInput("");
+      if (!res.ok) throw new Error("Failed to get response from server");
+
+      const data = await res.json();
+      const aiContent = data.choices?.[0]?.message?.content || "";
+
+      setChats((oldChats) =>
+        oldChats.map((chatArr, idx) =>
+          idx === activeChat
+            ? [...chatArr, { content: aiContent, role: "assistant" }]
+            : chatArr
+        )
+      );
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setChats((oldChats) =>
+        oldChats.map((chatArr, idx) =>
+          idx === activeChat
+            ? [
+                ...chatArr,
+                { content: "Error: Could not reach AI", role: "assistant" },
+              ]
+            : chatArr
+        )
+      );
+    }
   };
 
+  const handleNewChat = () => {
+    setChats((prev) => [...prev, []]);
+    setActiveChat(chats.length);
+  };
+
+  const handleSelectChat = (idx) => setActiveChat(idx);
+
   return (
-    <div className="chat-container">
-      <h2>AI Chatbot (Pavan Edition)</h2>
-      <div className="chat-box">
-        {chat.map((msg, idx) => (
-          <p key={idx}>
-            <strong>{msg.sender}:</strong> {msg.text}
-          </p>
-        ))}
-      </div>
-      <div className="input-area">
-        <input value={input} onChange={(e) => setInput(e.target.value)} />
-        <button onClick={sendMessage}>Send</button>
+    <div className="main-layout">
+      <Sidebar
+        chatList={chats.map((_, i) => ({ id: i }))}
+        activeChat={activeChat}
+        onNewChat={handleNewChat}
+        onSelectChat={handleSelectChat}
+        darkMode={darkMode}
+        toggleTheme={() => setDarkMode((prev) => !prev)}
+        persona={persona}
+        setPersona={setPersona}
+      />
+      <div className="chat-area">
+        <ChatWindow messages={chats[activeChat]} />
+        <MessageInput onSend={handleSend} />
       </div>
     </div>
   );
